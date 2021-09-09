@@ -1,0 +1,294 @@
+<html>
+
+<head>
+    <title>垃圾桶测试界面</title>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=2.0, user-scalable=yes" />
+    <script src="https://cdn.socket.io/socket.io-3.0.1.min.js"></script>
+    <script src="https://cdn.staticfile.org/vue/2.2.2/vue.min.js"></script>
+    <script src="http://cdn.staticfile.org/moment.js/2.24.0/moment.min.js"></script>
+    <script src="https://cdn.staticfile.org/axios/0.18.0/axios.min.js"></script>
+    <style>
+        .flex {
+            display: flex;
+        }
+
+        .flex1 {
+            flex: 1;
+        }
+
+        .wrap {
+            word-break: break-all;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <p>{{msg}}</p>
+        <div>
+            卡号： <input v-model="cardId"></input>
+            <button @click="handleShuaka">模拟刷卡</button>
+            <button @click="handleShuakaLoop" v-if="!timer1">定时刷卡（10s一次）</button>
+            <button @click="handleCleaTimer1" v-else>清空定时{{timer1s}}s</button>
+
+            <br />
+            <br />
+            <span>开始测试：{{isTest}}</span>
+            <button @click="handlePressButton">模拟按钮</button>
+            <br />
+            <div v-if="isTest">
+                读卡器 <input type="checkbox" v-model="testData.cardReader"></input>
+                超声波 <input type="checkbox" v-model="testData.ultrasonic"></input>
+                烟雾 <input type="checkbox" v-model="testData.smoke"></input>
+                红外 <input type="checkbox" v-model="testData.infrared"></input>
+                电子秤 <input type="checkbox" v-model="testData.electronicScale"></input>
+                开盖检测开关<input type="checkbox" v-model="testData.switchOfOpen"></input>
+                关盖检测开关<input type="checkbox" v-model="testData.switchOfClose"></input>
+                按钮<input type="checkbox" v-model="testData.button"></input>
+                摄像头<input type="checkbox" v-model="testData.camera"></input>
+                <button @click="handleReportTestResult">上报测试结果</button>
+            </div>
+           
+
+            <br />
+
+            <br />
+
+            BatteryVoltage <input v-model="reqData.BatteryVoltage"></input>
+            SmokeState <input v-model="reqData.SmokeState"></input>
+            NetState <input v-model="reqData.NetState"></input>
+            BatteryLevel <input v-model="reqData.BatteryLevel"></input>
+            Volume <input v-model="reqData.Volume"></input>
+            OpenState<input type="checkbox" v-model="reqData.OpenState"></input>
+            MotionAlarmState<input type="checkbox" v-model="reqData.MotionAlarmState"></input>
+
+            <button @click="handleUpProps">上报属性</button>
+            <button @click="handleUpPropsLoop" v-if="!timer2">定时上报（1分钟一次）</button>
+            <button @click="handleCleaTimer2" v-else>清空定时{{timer2s}}s</button>
+        </div>
+        ----------------------------------
+        <div class="flex">
+            <div class="flex1">
+                <p>刷卡次数：<red>{{checkData.shuaka}}</red></p>
+                <p>开盖次数：<red>{{checkData.open}}</red></p>
+                <p>关盖次数：<red>{{checkData.close}}</red></p>
+            </div>
+            <p>注意：三者数据应该一致，否则意味着消息服务挂了</p>
+        </div>
+        ----------------------------------
+        <div class="flex">
+            <div class="flex1">
+                <p>日志列表：<button @click="eventList=[]">清空</button></p>
+                <ul>
+                    <li class="wrap" v-for="(item, i) in eventList">
+                        {{item.time}}
+                        <pre>{{item.data}}</pre>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div>
+            <p>测试概览：
+            <pre>
+1，该工具用于垃圾桶项目测试
+2，模拟了垃圾桶硬件端
+3，采用如下参数：
+
+var productKey = "a1vFxaePDfy";
+var deviceName = "test";
+var deviceSecret = "2d4d73665fd3e604f37bad68033f6639";
+                </pre>
+            </p>
+            <p>使用说明：
+            <pre>
+1，模拟刷卡：输入卡号，点击“模拟刷卡”，3秒后，自动回复关盖事件
+2，属性上传：修改属性后，点击“上传属性”
+3，日志打印：仅打印设备订阅到的消息（正序），点击“清空“删除日志
+                </pre>
+            </p>
+            <p>待做事项：
+            <pre>
+1，文件：services/io/io.js 105/106/107行需要修改参数
+                    crc:'',
+                    filenum:1,
+                    imei:'',
+                </pre>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                cardId: '317CFB0A',
+                reqData: { OpenState: false, SmokeState: 3, MotionAlarmState: false, BatteryLevel: 34, NetState: 33, Volume: 122, BatteryVoltage: 333 },
+                wnagGuanList: [],//网关的列表
+                msg: '准备就绪……',
+                eventList: [],
+                timer1: null,
+                timer1s: 10,
+                timer2: null,
+                timer2s: 60,
+                checkData:{
+                    shuaka:0,
+                    open:0,
+                    close:0
+                },
+                isTest:true,
+                testData:{
+                    cardReader:true,
+                    ultrasonic:true,
+                    smoke:true,
+                    infrared:true,
+                    electronicScale:true,
+                    switchOfOpen:true,
+                    switchOfClose:true,
+                    button:true,
+                    camera:true
+                }
+            },
+            created: function () {
+                let timer = setInterval(() => {
+                    this.timer2s--
+                    this.timer1s--
+                }, 1000);
+
+                var host = window.location.host
+                const socket = io('ws://' + host);
+                socket.on('connect', () => {
+                    // either with send()
+                    socket.send('Hello!');
+                    // or with emit() and custom event names
+                    socket.emit('salutations', 'Hello!', { 'mr': 'john' }, Uint8Array.from([1, 2, 3, 4]));
+                    this.setMsg('已连接到服务器……')
+
+                });
+
+                // handle the event sent with socket.send()
+                socket.on('message', data => {
+                    console.log(data);
+                });
+
+                // handle the event sent with socket.emit()
+                socket.on('greetings', (elem1, elem2, elem3) => {
+                    console.log(elem1, elem2, elem3);
+
+                    this.setMsg('socket握手成功……')
+
+                });
+                socket.on('device_connect', data => {
+                    console.log(data);
+                    var time = moment().format('YYYY/MM/DD h:mm:ss SSS');
+
+                    this.eventList.push({ data: '设备上线', time })
+
+                });
+                socket.on('device_offline', data => {
+                    var time = moment().format('YYYY/MM/DD h:mm:ss SSS');
+                    this.eventList.push({ data: '设备下线', time })
+                });
+
+                socket.on('device_message', ({ topic, payload }) => {
+                    var time = moment().format('YYYY/MM/DD h:mm:ss SSS');
+                    this.eventList.push({ data: { topic, payload }, time })
+                });
+
+                socket.on('device_open', (data => {
+                    this.checkData.open++
+                }));
+
+                socket.on('device_close', (data => {
+                    this.checkData.close++
+                }));
+                socket.on('device_start_test', (data => {
+                    if(this.isTest){
+                        console.log("正在测试，不响应其他测试指令……")
+                        return;
+                    }
+                    this.isTest=true;
+                    setTimeout(() => {
+                        this.isTest=false
+                    }, 30000);
+                }));
+            },
+            methods: {
+                handleShuaka() {
+                    axios.post(`/devices/airswitch/shuaka`, { cardId: this.cardId })
+                        .then(response => {
+                            console.log(response.data)
+                            // var msg = '当前电压：' + response.data.U
+                            this.setMsg("模拟刷卡成功")
+                            this.checkData.shuaka++
+
+                        })
+                },
+                handleShuakaLoop() {
+                    this.timer1s = 10
+                    this.timer1 = setInterval(() => {
+                        this.timer1s = 10
+                        this.handleShuaka()
+                    }, 10000);
+                },
+                handleCleaTimer1() {
+                    clearInterval(this.timer1)
+                    this.timer1 = null;
+                },
+
+                handleUpProps() {
+                    let req=Object.assign({},this.reqData)
+                    req.OpenState=req.OpenState?1:0
+                    req.MotionAlarmState=req.MotionAlarmState?1:0
+                    axios.post(`/devices/airswitch/upload`, req)
+                        .then(response => {
+                            console.log(response.data)
+                            // var msg = '当前电压：' + response.data.U
+                            this.setMsg("上传属性成功……s")
+                        })
+                },
+                handlePressButton(){
+                    axios.post(`/devices/airswitch/pressbutton`, { isTest:this.isTest?1:0 })
+                        .then(response => {
+                            console.log(response.data)
+                            this.setMsg("模拟按钮成功，开始测试，30秒后手动上报测试结果")
+                        })
+                },
+                handleReportTestResult(){
+                    axios.post(`/devices/airswitch/reportTestResult`, this.testData)
+                        .then(response => {
+                            console.log(response.data)
+                            this.setMsg("上报测试结果成功")
+                        })
+                },
+                
+                handleUpPropsLoop() {
+                    this.timer2s = 60
+                    this.timer2 = setInterval(() => {
+                        this.timer2s = 60
+                        this.handleUpProps()
+                    }, 60000);
+                },
+                handleCleaTimer2() {
+                    clearInterval(this.timer2)
+                    this.timer2 = null;
+
+                },
+                handleTest(e) {
+                    console.log("event:", e)
+                },
+                setMsg(msg) {
+                    this.msg = msg
+                    clearTimeout(this.timeID)
+                    this.timeID = setTimeout(() => {
+                        this.msg = '准备就绪……'
+                    }, 5000)
+                }
+            }
+        })
+    </script>
+</body>
+
+</html>
