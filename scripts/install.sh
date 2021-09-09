@@ -11,7 +11,7 @@
 cd ..
 git pull
 export GOPROXY=http://mirrors.aliyun.com/goproxy/
-go install .
+go install 
 cd /data/apps/go/bin
-killall -9 ant_push
-nohup ant_push &
+killall -9 push
+nohup push &
