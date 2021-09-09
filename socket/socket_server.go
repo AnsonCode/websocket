@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	socketio "github.com/googollee/go-socket.io"
+	"github.com/spf13/viper"
 )
 
 // "turing.com/push/grpc/grpcclient"
@@ -122,7 +123,9 @@ func InitSocketManager() {
 	router.POST("/socket.io/*any", gin.WrapH(server))
 	router.StaticFS("/public", http.Dir("./views"))
 
-	if err := router.Run(":8000"); err != nil {
+	// Addr:         viper.GetString("redis.addr"),
+	httpPort := viper.GetString("app.httpPort")
+	if err := router.Run(":" + httpPort); err != nil {
 		log.Fatal("failed run app: ", err)
 	}
 
